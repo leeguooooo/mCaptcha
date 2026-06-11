@@ -20,7 +20,7 @@ COPY Makefile /src/
 COPY scripts /src/scripts
 RUN make frontend
 
-FROM rust:latest as rust
+FROM rust:1.91 as rust
 WORKDIR /src
 COPY . .
 COPY --from=frontend /src/static/cache/bundle/ /src/static/cache/bundle/

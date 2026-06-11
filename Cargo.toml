@@ -110,3 +110,6 @@ awc = "3.0.0"
 
 [target.x86_64-unknown-linux-musl]
 linker = "x86_64"
+
+[patch.crates-io]
+libmcaptcha = { git = "https://github.com/leeguooooo/libmcaptcha", branch = "deploy-0.2.4-panic-fix" }
