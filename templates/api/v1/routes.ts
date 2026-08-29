@@ -11,6 +11,8 @@ const ROUTES = {
   usernameExists: "/api/v1/account/username/exists",
   emailExists: "/api/v1/account/email/exists",
   healthCheck: "/api/v1/meta/health",
+  healthLive: "/api/v1/meta/health/live",
+  healthReady: "/api/v1/meta/health/ready",
   buildDetails: "/api/v1/meta/build",
   markNotificationRead: "/api/v1/notifications/read",
 };

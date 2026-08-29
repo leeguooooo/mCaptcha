@@ -1860,7 +1860,7 @@ checksum = "f7012b1bbb0719e1097c47611d3898568c546d597c2e74d66f6087edd5233ff4"
 [[package]]
 name = "libmcaptcha"
 version = "0.2.4"
-source = "git+https://github.com/leeguooooo/libmcaptcha?branch=deploy-0.2.4-panic-fix#2ca59822f13d8e38369724dfd2f1a524f8094e38"
+source = "git+https://github.com/leeguooooo/libmcaptcha?rev=82f41fd6f40f57069bbdf9e006bab0487ae7a5e9#82f41fd6f40f57069bbdf9e006bab0487ae7a5e9"
 dependencies = [
  "actix",
  "crossbeam-channel",

@@ -5,6 +5,7 @@
 
 use crate::settings::Settings;
 use db_core::prelude::*;
+use std::time::Duration;
 
 pub type BoxDB = Box<dyn MCDatabase>;
 
@@ -16,7 +17,12 @@ pub mod pg {
     pub async fn get_data(settings: Option<Settings>) -> BoxDB {
         let settings = settings.unwrap_or_else(|| Settings::new().unwrap());
         let pool = settings.database.pool;
-        let pool_options = PgPoolOptions::new().max_connections(pool);
+        let pool_options = PgPoolOptions::new()
+            .min_connections(0)
+            .max_connections(pool)
+            .acquire_timeout(Duration::from_secs(2))
+            .idle_timeout(Some(Duration::from_secs(60)))
+            .max_lifetime(Some(Duration::from_secs(30 * 60)));
         let connection_options = ConnectionOptions::Fresh(Fresh {
             pool_options,
             url: settings.database.url.clone(),
@@ -36,7 +42,12 @@ pub mod maria {
     pub async fn get_data(settings: Option<Settings>) -> BoxDB {
         let settings = settings.unwrap_or_else(|| Settings::new().unwrap());
         let pool = settings.database.pool;
-        let pool_options = MySqlPoolOptions::new().max_connections(pool);
+        let pool_options = MySqlPoolOptions::new()
+            .min_connections(0)
+            .max_connections(pool)
+            .acquire_timeout(Duration::from_secs(2))
+            .idle_timeout(Some(Duration::from_secs(60)))
+            .max_lifetime(Some(Duration::from_secs(30 * 60)));
         let connection_options = ConnectionOptions::Fresh(Fresh {
             pool_options,
             url: settings.database.url.clone(),

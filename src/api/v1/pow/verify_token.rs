@@ -13,6 +13,8 @@ use crate::errors::*;
 use crate::AppData;
 use crate::V1_API_ROUTES;
 
+use super::resilience::{best_effort, spawn_background};
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CaptchaValidateResp {
     pub valid: bool,
@@ -50,7 +52,16 @@ pub async fn validate_captcha_token(
     let key = payload.key.clone();
     let res = data.captcha.validate_verification_tokens(payload).await?;
     let resp = CaptchaValidateResp { valid: res };
-    data.stats.record_confirm(&data, &key).await?;
+
+    let stats_data = data.clone();
+    spawn_background(async move {
+        best_effort(
+            "record PoW confirmation",
+            stats_data.stats.record_confirm(&stats_data, &key),
+        )
+        .await;
+    });
+
     //println!("{:?}", &payload);
     Ok(HttpResponse::Ok().json(resp))
 }

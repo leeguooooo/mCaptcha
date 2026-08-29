@@ -6,6 +6,7 @@
 use actix_web::web;
 
 pub mod get_config;
+mod resilience;
 pub mod verify_pow;
 pub mod verify_token;
 

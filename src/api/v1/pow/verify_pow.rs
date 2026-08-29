@@ -14,6 +14,8 @@ use crate::errors::*;
 use crate::AppData;
 use crate::V1_API_ROUTES;
 
+use super::resilience::{best_effort, spawn_background};
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 /// validation token that clients receive as proof for submiting
 /// valid PoW
@@ -67,18 +69,39 @@ pub async fn verify_pow(
     let time = payload.time;
     let nonce = payload.nonce;
     let (res, difficulty_factor) = data.captcha.verify_pow(payload.into(), ip).await?;
-    data.stats.record_solve(&data, &key).await?;
-    if let (Some(time), Some(worker_type)) = (time, worker_type) {
-        let analytics = db_core::CreatePerformanceAnalytics {
-            difficulty_factor,
-            time,
-            worker_type,
-        };
-        data.db.analysis_save(&key, &analytics).await?;
-    }
-    data.db
-        .update_max_nonce_for_level(&key, difficulty_factor, nonce as u32)
-        .await?;
+
+    let telemetry_data = data.clone();
+    spawn_background(async move {
+        best_effort(
+            "record PoW solve",
+            telemetry_data.stats.record_solve(&telemetry_data, &key),
+        )
+        .await;
+
+        if let (Some(time), Some(worker_type)) = (time, worker_type) {
+            let analytics = db_core::CreatePerformanceAnalytics {
+                difficulty_factor,
+                time,
+                worker_type,
+            };
+            best_effort(
+                "record PoW performance analytics",
+                telemetry_data.db.analysis_save(&key, &analytics),
+            )
+            .await;
+        }
+
+        best_effort(
+            "update maximum recorded nonce",
+            telemetry_data.db.update_max_nonce_for_level(
+                &key,
+                difficulty_factor,
+                nonce as u32,
+            ),
+        )
+        .await;
+    });
+
     let payload = ValidationToken { token: res };
     Ok(HttpResponse::Ok().json(payload))
 }

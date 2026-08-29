@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //use actix::prelude::*;
+use std::time::Duration;
+
 use actix_web::{web, HttpResponse, Responder};
 use libmcaptcha::pow::PoWConfig;
 use libmcaptcha::{
@@ -16,6 +18,10 @@ use crate::errors::*;
 //use crate::stats::record::record_fetch;
 use crate::AppData;
 use crate::V1_API_ROUTES;
+
+use super::resilience::{best_effort_with_timeout, spawn_background};
+
+const MAX_NONCE_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct GetConfigPayload {
@@ -36,32 +42,40 @@ pub async fn get_config(
     payload: web::Json<GetConfigPayload>,
     data: AppData,
 ) -> ServiceResult<impl Responder> {
-    //if res.exists.is_none() {
-    if !data.db.captcha_exists(None, &payload.key).await? {
-        return Err(ServiceError::TokenNotFound);
-    }
     let payload = payload.into_inner();
+    let key = payload.key;
 
-    let config: ServiceResult<PoWConfig> =
-        match data.captcha.get_pow(payload.key.clone()).await {
-            Ok(Some(config)) => Ok(config),
-            Ok(None) => {
-                init_mcaptcha(&data, &payload.key).await?;
-                let config = data
-                    .captcha
-                    .get_pow(payload.key.clone())
-                    .await
-                    .expect("mcaptcha should be initialized and ready to go");
-                Ok(config.unwrap())
+    let config: PoWConfig = match data.captcha.get_pow(key.clone()).await? {
+        Some(config) => config,
+        None => {
+            if !data.db.captcha_exists(None, &key).await? {
+                return Err(ServiceError::TokenNotFound);
             }
-            Err(e) => Err(e.into()),
-        };
-    let config = config?;
-    let max_nonce = data
-        .db
-        .get_max_nonce_for_level(&payload.key, config.difficulty_factor)
-        .await?;
-    data.stats.record_fetch(&data, &payload.key).await?;
+            init_mcaptcha(&data, &key).await?;
+            data.captcha
+                .get_pow(key.clone())
+                .await?
+                .ok_or(ServiceError::InternalServerError)?
+        }
+    };
+    let max_nonce = best_effort_with_timeout(
+        "read maximum recorded nonce",
+        MAX_NONCE_TIMEOUT,
+        data.db
+            .get_max_nonce_for_level(&key, config.difficulty_factor),
+    )
+    .await
+    .unwrap_or_default();
+
+    let stats_data = data.clone();
+    let stats_key = key.clone();
+    spawn_background(async move {
+        super::resilience::best_effort(
+            "record config fetch",
+            stats_data.stats.record_fetch(&stats_data, &stats_key),
+        )
+        .await;
+    });
 
     let config = ApiPoWConfig {
         string: config.string,

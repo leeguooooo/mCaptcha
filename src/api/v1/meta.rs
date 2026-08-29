@@ -22,6 +22,8 @@ pub mod routes {
     pub struct Meta {
         pub build_details: &'static str,
         pub health: &'static str,
+        pub health_live: &'static str,
+        pub health_ready: &'static str,
     }
 
     impl Meta {
@@ -29,6 +31,8 @@ pub mod routes {
             Self {
                 build_details: "/api/v1/meta/build",
                 health: "/api/v1/meta/health",
+                health_live: "/api/v1/meta/health/live",
+                health_ready: "/api/v1/meta/health/ready",
             }
         }
     }
@@ -56,11 +60,13 @@ impl Health {
     fn is_redis(redis: &Option<bool>) -> bool {
         redis.is_none()
     }
+
+    fn is_ready(&self) -> bool {
+        self.db && self.redis.unwrap_or(true)
+    }
 }
 
-/// checks all components of the system
-#[my_codegen::get(path = "crate::V1_API_ROUTES.meta.health")]
-async fn health(data: AppData) -> impl Responder {
+async fn check_dependencies(data: &AppData) -> Health {
     let mut resp_builder = HealthBuilder::default();
     resp_builder.redis(None);
 
@@ -79,12 +85,40 @@ async fn health(data: AppData) -> impl Responder {
         }
     };
 
-    HttpResponse::Ok().json(resp_builder.build().unwrap())
+    resp_builder.build().unwrap()
+}
+
+fn readiness_response(status: Health) -> HttpResponse {
+    if status.is_ready() {
+        HttpResponse::Ok().json(status)
+    } else {
+        HttpResponse::ServiceUnavailable().json(status)
+    }
+}
+
+/// Backwards-compatible dependency health endpoint.
+#[my_codegen::get(path = "crate::V1_API_ROUTES.meta.health")]
+async fn health(data: AppData) -> impl Responder {
+    readiness_response(check_dependencies(&data).await)
+}
+
+/// Process liveness endpoint. Does not probe downstream dependencies.
+#[my_codegen::get(path = "crate::V1_API_ROUTES.meta.health_live")]
+async fn health_live() -> impl Responder {
+    HttpResponse::Ok().finish()
+}
+
+/// Readiness endpoint. Returns 503 when PostgreSQL or Redis is unavailable.
+#[my_codegen::get(path = "crate::V1_API_ROUTES.meta.health_ready")]
+async fn health_ready(data: AppData) -> impl Responder {
+    readiness_response(check_dependencies(&data).await)
 }
 
 pub fn services(cfg: &mut web::ServiceConfig) {
     cfg.service(build_details);
     cfg.service(health);
+    cfg.service(health_live);
+    cfg.service(health_ready);
 }
 
 #[cfg(test)]
@@ -107,6 +141,34 @@ pub mod tests {
         )
         .await;
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn health_live_works_without_app_data() {
+        let app = test::init_service(App::new().configure(services)).await;
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri(V1_API_ROUTES.meta.health_live)
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn readiness_is_unavailable_when_a_dependency_is_down() {
+        let response = readiness_response(Health {
+            db: false,
+            redis: Some(true),
+        });
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let response = readiness_response(Health {
+            db: true,
+            redis: Some(false),
+        });
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[actix_rt::test]
