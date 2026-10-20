@@ -2117,8 +2117,7 @@ checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
 [[package]]
 name = "libmcaptcha"
 version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bd24de3df9ea98d75d929dc4df5d637832213d3deb61d2cfa5c9055ccdaea6b"
+source = "git+https://github.com/leeguooooo/libmcaptcha?rev=82f41fd6f40f57069bbdf9e006bab0487ae7a5e9#82f41fd6f40f57069bbdf9e006bab0487ae7a5e9"
 dependencies = [
  "actix",
  "crossbeam-channel",
@@ -2262,6 +2261,7 @@ dependencies = [
  "openssl",
  "pretty_env_logger",
  "rand 0.8.5",
+ "redis",
  "reqwest",
  "rust-embed",
  "sailfish",

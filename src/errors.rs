@@ -119,14 +119,30 @@ pub struct ErrorToResponse {
 
 impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
+        let error = match self {
+            ServiceError::DBError(error) => {
+                log::error!("database error: {}", error.0);
+                "temporary service unavailable".to_owned()
+            }
+            ServiceError::CaptchaError(error)
+                if matches!(
+                    error,
+                    CaptchaError::RedisError(_)
+                        | CaptchaError::RecvError(_)
+                        | CaptchaError::MailboxError
+                        | CaptchaError::MCaptchaRedisModuleError
+                        | CaptchaError::MCaptchaRedisModuleIsNotLoaded
+                        | CaptchaError::MCaptchaRediSModuleCommandNotFound(_)
+                ) =>
+            {
+                log::error!("captcha infrastructure error: {error}");
+                "temporary service unavailable".to_owned()
+            }
+            _ => self.to_string(),
+        };
         HttpResponseBuilder::new(self.status_code())
             .append_header((header::CONTENT_TYPE, "application/json; charset=UTF-8"))
-            .body(
-                serde_json::to_string(&ErrorToResponse {
-                    error: self.to_string(),
-                })
-                .unwrap(),
-            )
+            .body(serde_json::to_string(&ErrorToResponse { error }).unwrap())
     }
 
     fn status_code(&self) -> StatusCode {
@@ -154,7 +170,14 @@ impl ResponseError for ServiceError {
             ServiceError::CaptchaError(e) => {
                 log::error!("{}", e);
                 match e {
-                    CaptchaError::MailboxError => StatusCode::INTERNAL_SERVER_ERROR,
+                    CaptchaError::RedisError(_)
+                    | CaptchaError::RecvError(_)
+                    | CaptchaError::MailboxError
+                    | CaptchaError::MCaptchaRedisModuleError
+                    | CaptchaError::MCaptchaRedisModuleIsNotLoaded
+                    | CaptchaError::MCaptchaRediSModuleCommandNotFound(_) => {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    }
                     _ => StatusCode::BAD_REQUEST,
                 }
             }
@@ -164,7 +187,7 @@ impl ResponseError for ServiceError {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
 
-            ServiceError::DBError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ServiceError::DBError(_) => StatusCode::SERVICE_UNAVAILABLE,
             ServiceError::CaptchaNotFound => StatusCode::NOT_FOUND,
             ServiceError::TrafficPatternNotFound => StatusCode::NOT_FOUND,
         }
@@ -187,7 +210,6 @@ impl From<CredsError> for ServiceError {
 
 impl From<DBError> for ServiceError {
     fn from(e: DBError) -> ServiceError {
-        println!("from conversin: {}", e);
         match e {
             DBError::UsernameTaken => ServiceError::UsernameTaken,
             DBError::SecretTaken => ServiceError::InternalServerError,
@@ -197,6 +219,28 @@ impl From<DBError> for ServiceError {
             DBError::TrafficPatternNotFound => ServiceError::TrafficPatternNotFound,
             _ => ServiceError::DBError(DBErrorWrapper(e)),
         }
+    }
+}
+
+#[cfg(test)]
+mod service_error_tests {
+    use std::io;
+
+    use actix_web::body::to_bytes;
+
+    use super::*;
+
+    #[actix_rt::test]
+    async fn database_errors_are_redacted() {
+        let error = ServiceError::DBError(DBErrorWrapper(DBError::DBError(Box::new(
+            io::Error::other("sensitive database detail"),
+        ))));
+
+        let response = error.error_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = to_bytes(response.into_body()).await.unwrap();
+        let body: ErrorToResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body.error, "temporary service unavailable");
     }
 }
 

@@ -36,7 +36,8 @@ rust-embed = "8.0.0"
 libcachebust = "0.3.0"
 
 futures = "0.3.15"
-tokio = { version = "1.14", features = ["sync"]}
+tokio = { version = "1.14", features = ["sync", "time"]}
+redis = { version = "0.23", features = ["tokio-comp", "aio", "connection-manager"] }
 
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls", "postgres", "time", "mysql"] }
 argon2-creds = { branch = "master", git = "https://github.com/realaravinth/argon2-creds"}
@@ -110,3 +111,6 @@ awc = "3.0.0"
 
 [target.x86_64-unknown-linux-musl]
 linker = "x86_64"
+
+[patch.crates-io]
+libmcaptcha = { git = "https://github.com/leeguooooo/libmcaptcha", rev = "82f41fd6f40f57069bbdf9e006bab0487ae7a5e9" }

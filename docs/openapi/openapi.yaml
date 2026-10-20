@@ -185,14 +185,50 @@ paths:
                 $ref: '#/components/schemas/Error'
   /api/v1/meta/health:
     get:
-      summary: Health check
+      summary: Dependency readiness check
       operationId: healthCheck
       tags:
         - meta
         - health
       responses:
         '200':
-          description: OK
+          description: All dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: PostgreSQL or Redis is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/v1/meta/health/live:
+    get:
+      summary: Process liveness check
+      operationId: healthLive
+      tags:
+        - meta
+        - health
+      responses:
+        '200':
+          description: Process is alive
+  /api/v1/meta/health/ready:
+    get:
+      summary: Dependency readiness check
+      operationId: healthReady
+      tags:
+        - meta
+        - health
+      responses:
+        '200':
+          description: All dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: PostgreSQL or Redis is unavailable
           content:
             application/json:
               schema:

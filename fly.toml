@@ -1,0 +1,50 @@
+app = "pw-mcaptcha"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  MCAPTCHA__server_IP = "0.0.0.0"
+  MCAPTCHA_allow_demo = "false"
+  MCAPTCHA_allow_registration = "false"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_avg_traffic_difficulty = "50000"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_avg_traffic_time = "1"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_broke_my_site_traffic_difficulty = "5000000"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_broke_my_site_traffic_time = "5"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_duration = "30"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_peak_sustainable_traffic_difficulty = "3000000"
+  MCAPTCHA_captcha_DEFAULT_DIFFICULTY_STRATEGY_peak_sustainable_traffic_time = "3"
+  MCAPTCHA_captcha_ENABLE_STATS = "true"
+  MCAPTCHA_captcha_GC = "30"
+  MCAPTCHA_captcha_QUEUE_LENGTH = "2000"
+  MCAPTCHA_captcha_RUNNERS = "4"
+  MCAPTCHA_commercial = "false"
+  MCAPTCHA_database_POOL = "4"
+  MCAPTCHA_debug = "false"
+  MCAPTCHA_redis_POOL = "8"
+  MCAPTCHA_redis_URL = "redis://pw-mcaptcha-cache.internal:6379"
+  MCAPTCHA_server_DOMAIN = "pw-mcaptcha.fly.dev"
+  PORT = "7000"
+
+[http_service]
+  internal_port = 7000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 2
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "15s"
+  method = "GET"
+  path = "/api/v1/meta/health/live"
+  timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4gb"
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 4096
+  processes = ["app"]
