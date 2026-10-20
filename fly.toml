@@ -38,7 +38,7 @@ primary_region = "sin"
   grace_period = "30s"
   interval = "15s"
   method = "GET"
-  path = "/api/v1/meta/health/ready"
+  path = "/api/v1/meta/health/live"
   timeout = "5s"
 
 [[vm]]
