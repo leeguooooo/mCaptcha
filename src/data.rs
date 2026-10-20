@@ -224,7 +224,8 @@ impl Data {
             settings: s.clone(),
             stats,
             survey_secrets,
-            secret_cache: SecretCache::default(),
+            secret_cache: SecretCache::connect(s.redis.as_ref().map(|r| r.url.as_str()))
+                .await,
         };
 
         #[cfg(not(debug_assertions))]

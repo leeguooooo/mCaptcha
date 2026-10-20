@@ -2013,6 +2013,7 @@ dependencies = [
  "openssl",
  "pretty_env_logger 0.4.0",
  "rand",
+ "redis",
  "reqwest",
  "rust-embed",
  "sailfish",
