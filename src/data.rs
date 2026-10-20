@@ -10,6 +10,8 @@ use std::thread;
 use std::time::Duration;
 
 use actix::prelude::*;
+
+use crate::api::v1::pow::secret_cache::SecretCache;
 use argon2_creds::{Config, ConfigBuilder, PasswordPolicy};
 use lettre::transport::smtp::authentication::Mechanism;
 use lettre::{
@@ -176,6 +178,8 @@ pub struct Data {
     pub stats: Box<dyn Stats>,
     /// survey secret store
     pub survey_secrets: SecretsStore,
+    /// last-known sitekey secrets, used by siteverify when the database is down
+    pub secret_cache: SecretCache,
 }
 
 impl Data {
@@ -220,6 +224,7 @@ impl Data {
             settings: s.clone(),
             stats,
             survey_secrets,
+            secret_cache: SecretCache::default(),
         };
 
         #[cfg(not(debug_assertions))]

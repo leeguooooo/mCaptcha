@@ -42,7 +42,9 @@ impl PowRuntime for Data {
     }
 
     async fn get_secret_from_captcha(&self, key: &str) -> ServiceResult<Secret> {
-        Ok(self.db.get_secret_from_captcha(key).await?)
+        self.secret_cache
+            .resolve(key, self.db.get_secret_from_captcha(key))
+            .await
     }
 
     async fn validate_verification_tokens(

@@ -8,6 +8,7 @@ use actix_web::web;
 pub mod get_config;
 mod resilience;
 mod runtime;
+pub mod secret_cache;
 pub mod verify_pow;
 pub mod verify_token;
 
