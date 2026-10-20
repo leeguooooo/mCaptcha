@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2023 Aravinth Manivannan <realaravinth@batsense.net>
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
+ARG GIT_HASH=unknown
 FROM node:20 as frontend
 RUN set -ex; \
     apt-get update; \
@@ -21,6 +22,8 @@ COPY scripts /src/scripts
 RUN make frontend
 
 FROM rust:1.91 as rust
+ARG GIT_HASH
+ENV MCAPTCHA_BUILD_GIT_HASH=$GIT_HASH
 WORKDIR /src
 COPY . .
 COPY --from=frontend /src/static/cache/bundle/ /src/static/cache/bundle/
@@ -30,7 +33,9 @@ RUN make cache-bust
 RUN cargo build --release
 
 FROM debian:trixie as mCaptcha
+ARG GIT_HASH
 LABEL org.opencontainers.image.source https://github.com/mCaptcha/mCaptcha
+LABEL org.opencontainers.image.revision=$GIT_HASH
 RUN useradd -ms /bin/bash -u 1001 mcaptcha
 WORKDIR /home/mcaptcha
 COPY --from=rust /src/target/release/mcaptcha /usr/local/bin/

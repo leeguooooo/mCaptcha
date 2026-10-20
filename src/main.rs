@@ -212,6 +212,7 @@ pub fn get_identity_service(
 mod test {
     #[test]
     fn version_source_code_url_works() {
+        assert!(!crate::GIT_COMMIT_HASH.trim().is_empty());
         assert_eq!(
             &*crate::SOURCE_FILES_OF_INSTANCE,
             &format!(
