@@ -5,6 +5,8 @@
 
 //! PoW Verification module
 
+use std::sync::Arc;
+
 use actix_web::HttpRequest;
 use actix_web::{web, HttpResponse, Responder};
 use libmcaptcha::pow::Work;
@@ -14,7 +16,7 @@ use crate::errors::*;
 use crate::AppData;
 use crate::V1_API_ROUTES;
 
-use super::resilience::{best_effort, spawn_background};
+use super::runtime::{spawn_solve, PowRuntime, SolveEvent};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 /// validation token that clients receive as proof for submiting
@@ -63,44 +65,31 @@ pub async fn verify_pow(
     #[cfg(test)]
     let ip = "127.0.1.1".into();
 
+    let runtime: Arc<dyn PowRuntime> = data.get_ref().clone();
+    verify_pow_with(runtime, payload.into_inner(), ip).await
+}
+
+pub(super) async fn verify_pow_with(
+    runtime: Arc<dyn PowRuntime>,
+    payload: ApiWork,
+    ip: String,
+) -> ServiceResult<HttpResponse> {
     let key = payload.key.clone();
-    let payload = payload.into_inner();
     let worker_type = payload.worker_type.clone();
     let time = payload.time;
     let nonce = payload.nonce;
-    let (res, difficulty_factor) = data.captcha.verify_pow(payload.into(), ip).await?;
+    let (res, difficulty_factor) = runtime.verify_pow(payload.into(), ip).await?;
 
-    let telemetry_data = data.clone();
-    spawn_background(async move {
-        best_effort(
-            "record PoW solve",
-            telemetry_data.stats.record_solve(&telemetry_data, &key),
-        )
-        .await;
-
-        if let (Some(time), Some(worker_type)) = (time, worker_type) {
-            let analytics = db_core::CreatePerformanceAnalytics {
-                difficulty_factor,
-                time,
-                worker_type,
-            };
-            best_effort(
-                "record PoW performance analytics",
-                telemetry_data.db.analysis_save(&key, &analytics),
-            )
-            .await;
-        }
-
-        best_effort(
-            "update maximum recorded nonce",
-            telemetry_data.db.update_max_nonce_for_level(
-                &key,
-                difficulty_factor,
-                nonce as u32,
-            ),
-        )
-        .await;
-    });
+    spawn_solve(
+        runtime,
+        SolveEvent {
+            key,
+            difficulty_factor,
+            nonce,
+            time,
+            worker_type,
+        },
+    );
 
     let payload = ValidationToken { token: res };
     Ok(HttpResponse::Ok().json(payload))
@@ -193,11 +182,22 @@ pub mod tests {
         assert_eq!(pow_verify_resp.status(), StatusCode::OK);
         let limit = 50;
         let offset = 0;
-        let mut analytics = data
-            .db
-            .analytics_fetch(&token_key.key, limit, offset)
-            .await
-            .unwrap();
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut analytics = loop {
+            let analytics = data
+                .db
+                .analytics_fetch(&token_key.key, limit, offset)
+                .await
+                .unwrap();
+            if !analytics.is_empty() {
+                break analytics;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "background analytics write did not complete before timeout"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        };
         assert_eq!(analytics.len(), 1);
         let a = analytics.pop().unwrap();
         assert_eq!(a.time, work.time.unwrap());

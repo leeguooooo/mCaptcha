@@ -5,6 +5,8 @@
 
 //! PoW success token module
 
+use std::sync::Arc;
+
 use actix_web::{web, HttpResponse, Responder};
 use libmcaptcha::cache::messages::VerifyCaptchaResult;
 use serde::{Deserialize, Serialize};
@@ -13,7 +15,7 @@ use crate::errors::*;
 use crate::AppData;
 use crate::V1_API_ROUTES;
 
-use super::resilience::{best_effort, spawn_background};
+use super::runtime::{spawn_confirm, PowRuntime};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CaptchaValidateResp {
@@ -44,23 +46,26 @@ pub async fn validate_captcha_token(
     payload: web::Json<VerifyCaptchaResultPayload>,
     data: AppData,
 ) -> ServiceResult<impl Responder> {
-    let secret = data.db.get_secret_from_captcha(&payload.key).await?;
+    let runtime: Arc<dyn PowRuntime> = data.get_ref().clone();
+    siteverify_with(runtime, payload.into_inner()).await
+}
+
+pub(super) async fn siteverify_with(
+    runtime: Arc<dyn PowRuntime>,
+    payload: VerifyCaptchaResultPayload,
+) -> ServiceResult<HttpResponse> {
+    let secret = runtime.get_secret_from_captcha(&payload.key).await?;
     if secret.secret != payload.secret {
         return Err(ServiceError::WrongPassword);
     }
-    let payload: VerifyCaptchaResult = payload.into_inner().into();
+    let payload: VerifyCaptchaResult = payload.into();
     let key = payload.key.clone();
-    let res = data.captcha.validate_verification_tokens(payload).await?;
+    let res = runtime.validate_verification_tokens(payload).await?;
     let resp = CaptchaValidateResp { valid: res };
 
-    let stats_data = data.clone();
-    spawn_background(async move {
-        best_effort(
-            "record PoW confirmation",
-            stats_data.stats.record_confirm(&stats_data, &key),
-        )
-        .await;
-    });
+    if res {
+        spawn_confirm(runtime, key);
+    }
 
     //println!("{:?}", &payload);
     Ok(HttpResponse::Ok().json(resp))
